@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <title>Quản lý kho & Thực đơn</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <style>
+    body {
+      font-family: Arial;
+      margin: 0;
+      padding: 0;
+      background: #f4f6f8;
+    }
+    .tab {
+      display: flex;
+      background: #007bff;
+      color: white;
+      padding: 10px;
+    }
+    .tab button {
+      background: none;
+      border: none;
+      color: white;
+      padding: 10px 20px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .tab button.active {
+      background: #0056b3;
+    }
+    .tabcontent {
+      display: none;
+      padding: 20px;
+    }
+    .container {
+      max-width: 1200px;
+      margin: auto;
+      padding: 20px;
+      background: white;
+      border-radius: 8px;
+      margin-top: 20px;
+    }
+    textarea, input, select {
+      width: 100%;
+      padding: 8px;
+      margin: 6px 0;
+    }
+    button {
+      padding: 8px 16px;
+      margin: 6px 4px;
+      cursor: pointer;
+    }
+    .inline-buttons {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .low-stock {
+      background-color: #ffe6e6;
+      color: red;
+      font-weight: bold;
+    }
+    .delete-btn {
+      background: #e74c3c;
+      color: white;
+      border: none;
+      padding: 4px 10px;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    table th, table td {
+      border: 1px solid #ccc;
+      padding: 6px;
+      text-align: center;
+    }
+    .auth-container {
+      text-align: center;
+      margin-top: 100px;
+    }
+    .auth-container input {
+      max-width: 300px;
+      margin: 8px auto;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+<div id="authSection" class="auth-container">
+  <h2>Đăng nhập</h2>
+  <input type="email" id="email" placeholder="Email" />
+  <input type="password" id="password" placeholder="Mật khẩu" />
+  <button onclick="login()">Đăng nhập</button>
+  <p id="authMessage" style="color:red"></p>
+</div>
+<div id="mainApp" style="display:none;">
+  <div class="tab">
+    <button class="tablinks" onclick="openTab(event, 'dongia')">Bảng Đơn Giá</button>
+    <button class="tablinks" onclick="openTab(event, 'kho')">Quản lý kho</button>
+    <button class="tablinks" onclick="openTab(event, 'menu')">Tạo thực đơn</button>
+    <span style="flex:1;"></span>
+    <button onclick="logout()" style="background:#dc3545;color:white;border:none;padding:6px 12px;border-radius:4px;">Đăng xuất</button>
+  </div>
+
+  <!-- Tab Đơn Giá -->
+<div id="dongia" class="tabcontent">
+  <div class="container">
+    <h2>Bảng Đơn Giá</h2>
+    <table id="donGiaTable" border="1" width="100%">
+      <thead>
+        <tr><th>Mặt hàng</th><th>Đơn giá</th></tr>
+      </thead>
+      <tbody>
+        <!-- Hàng sẽ được thêm bằng JavaScript -->
+      </tbody>
+    </table>
+    <button onclick="addDonGiaRow()">➕ Thêm dòng</button>
+    <button onclick="saveDonGia()">💾 Lưu đơn giá</button>
+  </div>
+</div>
+
+
+  <!-- Tab Quản lý kho -->
+  <div id="kho" class="tabcontent">
+    <div class="container">
+      <h2>Quản lý kho</h2>
+      <textarea id="commandInput" rows="3" placeholder="Nhập. 10 xúc xích. Xuất. 5 sữa..."></textarea>
+      <div class="inline-buttons">
+        <button onclick="processCommand()">Thực hiện</button>
+        <button onclick="undoLastCommand()">Hoàn tác</button>
+        <button onclick="exportToExcel()">Xuất Excel</button>
+      </div>
+      <h3>Bảng tồn kho</h3>
+      <table>
+        <thead><tr><th>Mặt hàng</th><th>Số lượng</th><th>Đơn giá</th><th>Thành tiền</th><th>Hành động</th></tr></thead>
+        <tbody id="inventoryTable"></tbody>
+      </table>
+    </div>
+  </div>
+<!-- Tab Tạo Thực Đơn -->
+<div id="menu" class="tabcontent">
+  <div class="container">
+    <h2>Tạo thực đơn cho 4 công ty</h2>
+    <textarea id="monMan" rows="3" placeholder="Nhập món mặn, mỗi món 1 dòng"></textarea>
+    <textarea id="monChay" rows="3" placeholder="Nhập món chay, mỗi món 1 dòng"></textarea>
+    <textarea id="monNuoc" rows="3" placeholder="Nhập món nước, mỗi món 1 dòng"></textarea>
+    <button onclick="saveMenuItems()">Lưu món ăn</button>
+    <button onclick="taoThucDon()">Tạo thực đơn</button>
+    <div class="menu-section" id="menuSection"></div>
+  </div>
+</div>
+
+<script>
+  // Firebase config
+const firebaseConfig = {
+  apiKey: "AIzaSyBWUkbKHDzREWuepmLkRfccj1fefCCUSKU",
+  authDomain: "quanlykho-7dd5e.firebaseapp.com",
+  projectId: "quanlykho-7dd5e",
+  storageBucket: "quanlykho-7dd5e.appspot.com",
+  messagingSenderId: "120982528339",
+  appId: "1:120982528339:web:013393b5860af50cb641a6",
+  databaseURL: "https://quanlykho-7dd5e-default-rtdb.asia-southeast1.firebasedatabase.app"
+};
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.database();
+
+  // Đăng nhập
+  function login() {
+    const email = document.getElementById('email').value;
+    const pass = document.getElementById('password').value;
+    auth.signInWithEmailAndPassword(email, pass)
+      .then(() => {
+        document.getElementById("authSection").style.display = "none";
+        document.getElementById("mainApp").style.display = "block";
+        loadData();
+      })
+      .catch(err => {
+        document.getElementById("authMessage").innerText = "Đăng nhập thất bại";
+      });
+  }
+
+  // Đăng xuất
+  function logout() {
+    auth.signOut().then(() => location.reload());
+  }
+
+  // Hiển thị tab
+  function openTab(evt, tabName) {
+    const tabcontent = document.getElementsByClassName("tabcontent");
+    for (let i = 0; i < tabcontent.length; i++) tabcontent[i].style.display = "none";
+
+    const tablinks = document.getElementsByClassName("tablinks");
+    for (let i = 0; i < tablinks.length; i++) tablinks[i].classList.remove("active");
+
+    document.getElementById(tabName).style.display = "block";
+    evt.currentTarget.classList.add("active");
+  }
+</script>
+<script>
+  // Load dữ liệu ban đầu
+  function loadData() {
+    loadDonGia();
+    loadInventory();
+    loadSavedMenus();
+  }
+
+  // ------------------ XỬ LÝ ĐƠN GIÁ ------------------
+function addDonGiaRow() {
+  const tbody = document.getElementById("donGiaTable").querySelector("tbody");
+  const row = tbody.insertRow();
+  row.insertCell(0).innerHTML = `<input type="text" placeholder="Tên mặt hàng">`;
+  row.insertCell(1).innerHTML = `<input type="number" placeholder="Đơn giá">`;
+}
+
+function saveDonGia() {
+  const rows = document.querySelectorAll("#donGiaTable tbody tr");
+  const data = {};
+  rows.forEach(row => {
+    const ten = row.cells[0].querySelector("input").value.trim().toLowerCase();
+    const gia = parseFloat(row.cells[1].querySelector("input").value);
+    if (ten && !isNaN(gia)) data[ten] = gia;
+  });
+  localStorage.setItem("donGia", JSON.stringify(data));
+  alert("✅ Đã lưu đơn giá!");
+}
+
+function loadDonGia() {
+  const data = JSON.parse(localStorage.getItem("donGia") || "{}");
+  const tbody = document.getElementById("donGiaTable").querySelector("tbody");
+  tbody.innerHTML = "";
+  Object.keys(data).forEach(ten => {
+    const row = tbody.insertRow();
+    row.insertCell(0).innerHTML = `<input value="${ten}" />`;
+    row.insertCell(1).innerHTML = `<input type="number" value="${data[ten]}" />`;
+  });
+}
+
+
+  // ------------------ XỬ LÝ TỒN KHO ------------------
+  let inventory = {};
+  let commandHistory = [];
+
+  function processCommand() {
+    const input = document.getElementById("commandInput").value.trim();
+    const lines = input.split(".").map(l => l.trim()).filter(Boolean);
+    const donGia = JSON.parse(localStorage.getItem("donGia") || "{}");
+    commandHistory.push(JSON.parse(JSON.stringify(inventory)));
+
+    lines.forEach(line => {
+      const match = line.match(/^(Nhập|Xuất)\s+(\d+)\s+(.+)$/i);
+      if (match) {
+        const type = match[1].toLowerCase();
+        const qty = parseInt(match[2]);
+        const item = match[3].trim().toLowerCase();
+        if (!inventory[item]) inventory[item] = 0;
+        inventory[item] += (type === "nhập" ? qty : -qty);
+        if (inventory[item] < 0) inventory[item] = 0;
+      }
+    });
+    updateInventoryTable();
+  }
+
+  function undoLastCommand() {
+    if (commandHistory.length > 0) {
+      inventory = commandHistory.pop();
+      updateInventoryTable();
+    }
+  }
+
+  function updateInventoryTable() {
+    const tbody = document.getElementById("inventoryTable");
+    const donGia = JSON.parse(localStorage.getItem("donGia") || "{}");
+    tbody.innerHTML = "";
+    Object.entries(inventory).forEach(([ten, sl]) => {
+      const gia = donGia[ten] || 0;
+      const thanhTien = sl * gia;
+      const row = document.createElement("tr");
+      row.className = sl < 5 ? "low-stock" : "";
+      row.innerHTML = `
+        <td>${toTitleCase(ten)}</td>
+        <td>${sl}</td>
+        <td>${gia}</td>
+        <td>${thanhTien.toLocaleString()}</td>
+        <td><button class="delete-btn" onclick="deleteItem('${ten}')">Xóa</button></td>
+      `;
+      tbody.appendChild(row);
+    });
+  }
+
+  function deleteItem(item) {
+    delete inventory[item];
+    updateInventoryTable();
+  }
+
+  function exportToExcel() {
+    const wb = XLSX.utils.book_new();
+    const rows = [["Mặt hàng", "Số lượng", "Đơn giá", "Thành tiền"]];
+    const donGia = JSON.parse(localStorage.getItem("donGia") || "{}");
+    Object.entries(inventory).forEach(([ten, sl]) => {
+      const gia = donGia[ten] || 0;
+      rows.push([toTitleCase(ten), sl, gia, sl * gia]);
+    });
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, "TonKho");
+    XLSX.writeFile(wb, "TonKho.xlsx");
+  }
+
+  function toTitleCase(str) {
+    return str.replace(/\w\S*/g, txt => txt.charAt(0).toUpperCase() + txt.slice(1));
+  }
+
+  // ------------------ XỬ LÝ THỰC ĐƠN ------------------
+  function saveMenuItems() {
+    const monMan = document.getElementById("monMan").value.trim().split("\n").filter(Boolean);
+    const monChay = document.getElementById("monChay").value.trim().split("\n").filter(Boolean);
+    const monNuoc = document.getElementById("monNuoc").value.trim().split("\n").filter(Boolean);
+    localStorage.setItem("monMan", JSON.stringify(monMan));
+    localStorage.setItem("monChay", JSON.stringify(monChay));
+    localStorage.setItem("monNuoc", JSON.stringify(monNuoc));
+    alert("Đã lưu món ăn");
+  }
+
+  function loadSavedMenus() {
+    const monMan = JSON.parse(localStorage.getItem("monMan") || "[]").join("\n");
+    const monChay = JSON.parse(localStorage.getItem("monChay") || "[]").join("\n");
+    const monNuoc = JSON.parse(localStorage.getItem("monNuoc") || "[]").join("\n");
+    document.getElementById("monMan").value = monMan;
+    document.getElementById("monChay").value = monChay;
+    document.getElementById("monNuoc").value = monNuoc;
+  }
+
+  function taoThucDon() {
+    const monMan = JSON.parse(localStorage.getItem("monMan") || "[]");
+    const monChay = JSON.parse(localStorage.getItem("monChay") || "[]");
+    if (monMan.length < 12 || monChay.length < 12) return alert("Cần ít nhất 12 món mặn và chay");
+
+    const thu = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"];
+    const html = ["A", "B", "C", "D"].map(cty => {
+      let rows = ["Ca", ...thu].map(t => `<th>${t}</th>`).join("");
+      let sangRow1 = "<tr><td>Sáng - Món Mặn</td>";
+      let sangRow2 = "<tr><td>Sáng - Món Chay</td>";
+      let chieuRow1 = "<tr><td>Chiều - Món Mặn</td>";
+      let chieuRow2 = "<tr><td>Chiều - Món Chay</td>";
+
+      for (let i = 0; i < 6; i++) {
+        let mm = getRandomItems(monMan, 2, i);
+        let mc = getRandomItems(monChay, 2, i);
+        sangRow1 += `<td>${mm[0]}</td>`;
+        sangRow2 += `<td>${mc[0]}</td>`;
+        chieuRow1 += `<td>${mm[1]}</td>`;
+        chieuRow2 += `<td>${mc[1]}</td>`;
+      }
+
+      return `
+      <div class="menu-block" id="thucdon-${cty}">
+        <h3>Công ty ${cty}</h3>
+        <table class="menu-table">
+          <tr>${rows}</tr>
+          ${sangRow1}</tr>
+          ${sangRow2}</tr>
+          ${chieuRow1}</tr>
+          ${chieuRow2}</tr>
+        </table>
+        <button class="download-btn" onclick="taiAnh('thucdon-${cty}')">Tải ảnh</button>
+      </div>`;
+    });
+
+    document.getElementById("menuSection").innerHTML = html.join("");
+  }
+
+  function getRandomItems(arr, n, offset) {
+    const copy = [...arr];
+    const result = [];
+    for (let i = 0; i < n; i++) {
+      const index = (offset + i * 7) % copy.length;
+      result.push(copy[index]);
+    }
+    return result;
+  }
+
+  function taiAnh(id) {
+    const node = document.getElementById(id);
+    html2canvas(node).then(canvas => {
+      const a = document.createElement("a");
+      a.href = canvas.toDataURL("image/png");
+      a.download = `${id}.png`;
+      a.click();
+    });
+  }
+
+  // Khởi tạo
+auth.onAuthStateChanged(user => {
+  if (user) {
+    document.getElementById("authSection").style.display = "none";
+    document.getElementById("mainApp").style.display = "block";
+    loadDonGia(); // 👈 gọi ở đây
+    loadInventory();
+    loadSavedMenus();
+  }
+});
+
+</script>
+</body>
+</html>
